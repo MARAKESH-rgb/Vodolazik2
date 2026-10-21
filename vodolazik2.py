@@ -16,18 +16,24 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-# Укажите ваш рабочий токен жестко в кавычках
-TOKEN = "8971026156:AAFxaZEOWaZeipjOgOMtujmLm19c7NRZ_nE"
+TOKEN = "СЮДА_ВСТАВЬТЕ_ВАШ_ТОКЕН"
 DB_NAME = "study.db"
 
 dp = Dispatcher()
 
+# Главное меню
 menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📚 Домашка"), KeyboardButton(text="📒 Конспекты")],
         [KeyboardButton(text="🔒 Мои долги"), KeyboardButton(text="➕ Добавить долг")],
         [KeyboardButton(text="➕ Добавить домашку"), KeyboardButton(text="📎 Загрузить конспект")],
     ],
+    resize_keyboard=True,
+)
+
+# Меню отмены во время ввода
+cancel_menu = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text="❌ Отмена")]],
     resize_keyboard=True,
 )
 
@@ -41,6 +47,12 @@ class DebtForm(StatesGroup):
 
 class NoteForm(StatesGroup):
     content = State()
+
+# Список всех системных кнопок для фильтрации
+MAIN_BUTTONS = [
+    "📚 Домашка", "📒 Конспекты", "🔒 Мои долги", 
+    "➕ Добавить долг", "➕ Добавить домашку", "📎 Загрузить конспект"
+]
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -73,46 +85,49 @@ async def init_db():
         """)
         await db.commit()
 
+# Хэндлер отмены (Кнопка Назад/Отмена)
+@dp.message(F.text == "❌ Отмена")
+async def cancel_handler(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer("Нечего отменять. Вы в главном меню.", reply_markup=menu)
+        return
+    await state.clear()
+    await message.answer("Действие отменено.", reply_markup=menu)
+
 @dp.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(
-        "Привет! 👋\n\n"
-        "Это учебный бот нашей группы.\n\n"
-        "📚 Домашка — общие задания.\n"
-        "📒 Конспекты — материалы группы.\n"
-        "🔒 Мои долги — только твои задолженности.",
-        reply_markup=menu,
-    )
+    await message.answer("Привет! 👋\n\nЭто учебный бот нашей группы.", reply_markup=menu)
 
 @dp.message(F.text == "➕ Добавить домашку")
 async def add_homework(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(HomeworkForm.subject)
-    await message.answer("Напиши название предмета.")
+    await message.answer("Напиши название предмета.", reply_markup=cancel_menu)
 
 @dp.message(HomeworkForm.subject)
 async def homework_subject(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Введи название предмета текстом.")
+    if not message.text or message.text in MAIN_BUTTONS:
+        await message.answer("Пожалуйста, введите название предмета текстом или нажмите «❌ Отмена»")
         return
     await state.update_data(subject=message.text.strip())
     await state.set_state(HomeworkForm.description)
-    await message.answer("Напиши, что задали.")
+    await message.answer("Напиши, что задали.", reply_markup=cancel_menu)
 
 @dp.message(HomeworkForm.description)
 async def homework_description(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Опиши задание текстом.")
+    if not message.text or message.text in MAIN_BUTTONS:
+        await message.answer("Пожалуйста, опишите задание текстом или нажмите «❌ Отмена»")
         return
     await state.update_data(description=message.text.strip())
     await state.set_state(HomeworkForm.deadline)
-    await message.answer("Укажи срок сдачи, например 25.10.2026.")
+    await message.answer("Укажи срок сдачи, например 25.10.2026.", reply_markup=cancel_menu)
 
 @dp.message(HomeworkForm.deadline)
 async def homework_deadline(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Укажи срок сдачи текстом.")
+    if not message.text or message.text in MAIN_BUTTONS:
+        await message.answer("Пожалуйста, укажите срок сдачи текстом или нажмите «❌ Отмена»")
         return
     data = await state.get_data()
     async with aiosqlite.connect(DB_NAME) as db:
@@ -139,12 +154,12 @@ async def show_homework(message: Message):
 async def add_debt(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(DebtForm.title)
-    await message.answer("Напиши свой долг.")
+    await message.answer("Напиши свой долг.", reply_markup=cancel_menu)
 
 @dp.message(DebtForm.title)
 async def save_debt(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Напиши название долга текстом.")
+    if not message.text or message.text in MAIN_BUTTONS:
+        await message.answer("Пожалуйста, напишите название долга текстом или нажмите «❌ Отмена»")
         return
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("INSERT INTO personal_debts (user_id, title) VALUES (?, ?)", (message.from_user.id, message.text.strip()))
@@ -184,8 +199,6 @@ async def handle(request):
 
 async def main():
     await init_db()
-    
-    # Стартуем веб-сервер на нужном порту
     app = web.Application()
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
@@ -194,7 +207,6 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-    # Запускаем бота
     async with Bot(token=TOKEN) as bot:
         await dp.start_polling(bot)
 
