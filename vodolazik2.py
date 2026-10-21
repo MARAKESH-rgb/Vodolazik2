@@ -224,6 +224,79 @@ async def complete_debt(callback: CallbackQuery):
         await callback.answer("Готово!")
     else:
         await callback.answer("Долг не найден.", show_alert=True)
+# =========================
+# РАЗДЕЛ: КОНСПЕКТЫ
+# =========================
+@dp.message(F.text == "📎 Загрузить конспект")
+async def upload_note(message: Message, state: FSMContext):
+    await state.clear()
+    await state.set_state(NoteForm.content)
+    await message.answer("Отправь следующим сообщением текст, фото или файл конспекта.", reply_markup=cancel_menu)
+
+# Исправленный хэндлер сохранения конспектов (принимает любые типы файлов)
+@dp.message(NoteForm.content)
+async def save_note(message: Message, state: FSMContext):
+    if message.text in MAIN_BUTTONS:
+        await message.answer("Пожалуйста, отправьте материал конспекта или нажмите «❌ Отмена»")
+        return
+
+    title = message.caption or message.text or "Конспект без описания"
+    content = message.text
+    file_id = None
+    file_type = None
+
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        file_type = "photo"
+    elif message.document:
+        file_id = message.document.file_id
+        file_type = "document"
+        title = message.caption or message.document.file_name or "Документ"
+    elif message.video:
+        file_id = message.video.file_id
+        file_type = "video"
+    elif message.audio:
+        file_id = message.audio.file_id
+        file_type = "audio"
+    elif message.voice:
+        file_id = message.voice.file_id
+        file_type = "voice"
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT INTO notes (title, content, file_id, file_type, author_id) VALUES (?, ?, ?, ?, ?)",
+            (title[:200], content, file_id, file_type, message.from_user.id)
+        )
+        await db.commit()
+
+    await state.clear()
+    await message.answer("📒 Конспект успешно сохранён для всей группы!", reply_markup=menu)
+
+@dp.message(F.text == "📒 Конспекты")
+async def show_notes(message: Message):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT id, title, content, file_id, file_type FROM notes ORDER BY id DESC LIMIT 20")
+        notes = await cursor.fetchall()
+    if not notes:
+        await message.answer("Пока конспектов нет.")
+        return
+    for note_id, title, content, file_id, file_type in notes:
+        await message.answer(f"📒 Конспект №{note_id}\n\nОписание/Название: {title}")
+        if content:
+            await message.answer(content[:4000])
+        if not file_id:
+            continue
+        if file_type == "photo":
+            await message.answer_photo(file_id)
+        elif file_type == "document":
+            await message.answer_document(file_id)
+        elif file_type == "video":
+            await message.answer_video(file_id)
+        elif file_type == "audio":
+            await message.answer_audio(file_id)
+        elif file_type == "voice":
+            await message.answer_voice(file_id)
+
 
 # Заглушка веб-сервера для Render
 async def handle(request):
