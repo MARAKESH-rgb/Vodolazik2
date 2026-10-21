@@ -16,7 +16,7 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-TOKEN = "СЮДА_ВСТАВЬТЕ_ВАШ_ТОКЕН"
+TOKEN = "8971026156:AAFxaZEOWaZeipjOgOMtujmLm19c7NRZ_nE"
 DB_NAME = "study.db"
 
 dp = Dispatcher()
