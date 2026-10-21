@@ -77,7 +77,7 @@ async def init_db():
 async def start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Привет! 👋\n\nЭто учебный бот нашей группы.",
+        "Привет! 👋\n\nЯ учебный бот твоей группы./n/n«Домашка» — общий список заданий/n«Конспекты» — обшие тексты, фото и файлы./n«Мои долги» — только твои личные задолженности./n/nВсе личные долги привязаны к твоему Telegram-аккаунту.",
         reply_markup=menu,
     )
 
