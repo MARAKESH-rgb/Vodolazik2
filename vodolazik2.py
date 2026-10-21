@@ -4,7 +4,7 @@ import aiosqlite
 from aiohttp import web
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -85,6 +85,17 @@ async def init_db():
         """)
         await db.commit()
 
+# Секретная команда полной очистки базы данных
+@dp.message(Command("очистить_базу"))
+async def clear_database(message: Message):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DROP TABLE IF EXISTS homework")
+        await db.execute("DROP TABLE IF EXISTS personal_debts")
+        await db.execute("DROP TABLE IF EXISTS notes")
+        await db.commit()
+    await init_db()
+    await message.answer("💥 База данных бота полностью очищена! Все домашки и долги удалены.")
+
 # Хэндлер отмены (Кнопка Назад/Отмена)
 @dp.message(F.text == "❌ Отмена")
 async def cancel_handler(message: Message, state: FSMContext):
@@ -95,10 +106,31 @@ async def cancel_handler(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Действие отменено.", reply_markup=menu)
 
+# =========================
+# СТАРТ (ПРИВЕТСТВИЕ)
+# =========================
+
 @dp.message(CommandStart())
 async def start(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Привет! 👋\n\nЭто учебный бот нашей группы.", reply_markup=menu)
+    await state.clear()  # Принудительно сбрасываем любые зависшие шаги ввода
+    
+    await message.answer(
+        "Привет! 👋 Наш бот поможет группе координировать учебу и ничего не забыть.\n\n"
+        "📖 **Вот что умеют разделы меню:**\n\n"
+        "📚 **Домашка** — Показывает полный список актуальных домашних заданий для всей группы. "
+        "Любой студент может нажать «➕ Добавить домашку», пошагово ввести предмет, описание и срок сдачи, "
+        "и это задание мгновенно увидят все.\n\n"
+        "📒 **Конспекты** — Сюда можно скидывать лекции, фотографии доски, шпаргалки или файлы в формате PDF. "
+        "Нажмите «📎 Загрузить конспект», отправьте файл, и он сохранится в общую базу материалов.\n\n"
+        "🔒 **Мои долги** — Твой личный приватный список. Никто из группы не увидит твои задолженности. "
+        "Через кнопку «➕ Добавить долг» ты можешь записать то, что нужно досдать лично тебе. "
+        "Как только сдашь работу — просто нажми кнопку «✅ Сдал(а)» под долгом, и он закроется.\n\n"
+        "❌ **Отмена** — Если ты случайно нажал кнопку добавления и передумал вводить текст, эта кнопка "
+        "всегда вернет тебя в главное меню без сохранения мусора.\n\n"
+        "👇 Используй кнопки на клавиатуре ниже, чтобы переключаться между разделами!",
+        reply_markup=menu,
+        parse_mode="Markdown"  # Этот параметр нужен, чтобы текст с жирным шрифтом отображался красиво
+    )
 
 @dp.message(F.text == "➕ Добавить домашку")
 async def add_homework(message: Message, state: FSMContext):
@@ -181,7 +213,7 @@ async def show_debts(message: Message):
 
 @dp.callback_query(F.data.startswith("done:"))
 async def complete_debt(callback: CallbackQuery):
-    debt_id = int(callback.data.split(":")[1])
+    debt_id = int(callback.data.split(":")[1]) # Исправленная строка
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("UPDATE personal_debts SET done = 1 WHERE id = ? AND user_id = ? AND done = 0", (debt_id, callback.from_user.id))
         await db.commit()
