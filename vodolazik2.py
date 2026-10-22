@@ -242,9 +242,10 @@ async def complete_debt(callback: CallbackQuery):
     else:
         await callback.answer("Долг не найден.", show_alert=True)
 
-# =========================
-# РАЗДЕЛ: КОНСПЕКТЫ
-# =========================
+# =====================================================================
+# ИСПРАВЛЕННЫЙ РАЗДЕЛ: КОНСПЕКТЫ
+# =====================================================================
+
 @dp.message(F.text == "📎 Загрузить конспект")
 async def upload_note(message: Message, state: FSMContext):
     await state.clear()
@@ -253,36 +254,47 @@ async def upload_note(message: Message, state: FSMContext):
 
 @dp.message(NoteForm.content)
 async def save_note(message: Message, state: FSMContext):
+    # Если пользователь нажал системную кнопку вместо отправки конспекта
     if message.text in MAIN_BUTTONS:
         await message.answer("Пожалуйста, отправьте материал конспекта или нажмите «❌ Отмена»")
         return
 
-    title = message.caption or message.text or "Конспект без описания"
-    content = message.text
+    # Задаем базовые значения, чтобы избежать ошибок отсутствия переменных
+    note_title = "Конспект без описания"
+    note_content = ""
     file_id = None
     file_type = None
 
-    if message.photo:
+    # Проверяем тип пришедшего сообщения и вытаскиваем данные
+    if message.text:
+        note_title = message.text[:50] + "..." if len(message.text) > 50 else message.text
+        note_content = message.text
+    elif message.photo:
         file_id = message.photo[-1].file_id
         file_type = "photo"
+        note_title = message.caption if message.caption else "Фото-конспект"
     elif message.document:
         file_id = message.document.file_id
         file_type = "document"
-        title = message.caption or message.document.file_name or "Документ"
+        note_title = message.caption if message.caption else message.document.file_name
     elif message.video:
         file_id = message.video.file_id
         file_type = "video"
+        note_title = message.caption if message.caption else "Видео-материал"
     elif message.audio:
         file_id = message.audio.file_id
         file_type = "audio"
+        note_title = message.caption if message.caption else "Аудио-лекция"
     elif message.voice:
         file_id = message.voice.file_id
         file_type = "voice"
+        note_title = "Голосовая заметка"
 
+    # Сохраняем в базу данных Supabase с правильным синтаксисом параметров
     conn = await asyncpg.connect(DB_URI)
     await conn.execute(
         "INSERT INTO notes (title, content, file_id, file_type, author_id) VALUES ($1, $2, $3, $4, $5)",
-        title[:200], content, file_id, file_type, message.from_user.id
+        note_title[:200], note_content, file_id, file_type, message.from_user.id
     )
     await conn.close()
 
@@ -298,15 +310,21 @@ async def show_notes(message: Message):
     if not notes:
         await message.answer("Пока конспектов нет.")
         return
+        
     for note in notes:
         await message.answer(f"📒 Конспект №{note['id']}\n\nОписание/Название: {note['title']}")
-        if note['content']:
+        
+        # Если есть текстовое содержимое, отправляем его
+        if note['content'] and note['content'].strip():
             await message.answer(note['content'][:4000])
+            
+        # Если прикреплен файл, отправляем его по file_id
         if not note['file_id']:
             continue
-        
+            
         f_id = note['file_id']
         f_type = note['file_type']
+        
         if f_type == "photo":
             await message.answer_photo(f_id)
         elif f_type == "document":
@@ -317,6 +335,7 @@ async def show_notes(message: Message):
             await message.answer_audio(f_id)
         elif f_type == "voice":
             await message.answer_voice(f_id)
+
 
 async def handle(request):
     return web.Response(text="Bot is running smoothly on Render!")
