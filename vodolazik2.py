@@ -176,14 +176,21 @@ async def homework_deadline(message: Message, state: FSMContext):
 
 @dp.message(F.text == "📚 Домашка")
 async def show_homework(message: Message):
-    async with aiosqlite.connect(DB_URI) as db:
-        cursor = await db.execute("SELECT id, subject, description, deadline FROM homework ORDER BY id DESC")
-        tasks = await cursor.fetchall()
+    conn = await asyncpg.connect(DB_URI)
+    tasks = await conn.fetch("SELECT id, subject, description, deadline FROM homework ORDER BY id DESC")
+    await conn.close()
+    
     if not tasks:
         await message.answer("Пока заданий нет.")
         return
-    for task_id, subject, description, deadline in tasks:
+    for task in tasks:
+        # Явно вытаскиваем значения из объекта Record по именам колонок
+        task_id = task['id']
+        subject = task['subject']
+        description = task['description']
+        deadline = task['deadline']
         await message.answer(f"📚 Задание №{task_id}\n\nПредмет: {subject}\nЗадание: {description}\nСрок: {deadline}")
+
 
 @dp.message(F.text == "➕ Добавить долг")
 async def add_debt(message: Message, state: FSMContext):
@@ -204,29 +211,37 @@ async def save_debt(message: Message, state: FSMContext):
 
 @dp.message(F.text == "🔒 Мои долги")
 async def show_debts(message: Message):
-    async with asyncpg.connect(DB_URI) as db:
-        cursor = await db.execute("SELECT id, title FROM personal_debts WHERE user_id = ? AND done = 0 ORDER BY id DESC", (message.from_user.id,))
-        debts = await cursor.fetchall()
+    conn = await asyncpg.connect(DB_URI)
+    debts = await conn.fetch("SELECT id, title FROM personal_debts WHERE user_id = $1 AND done = 0 ORDER BY id DESC", message.from_user.id)
+    await conn.close()
+    
     if not debts:
         await message.answer("🎉 У тебя нет открытых долгов!")
         return
-    for debt_id, title in debts:
+    for debt in debts:
+        debt_id = debt['id']
+        title = debt['title']
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Сдал(а)", callback_data=f"done:{debt_id}")]])
         await message.answer(f"📌 {title}", reply_markup=keyboard)
 
 @dp.callback_query(F.data.startswith("done:"))
 async def complete_debt(callback: CallbackQuery):
-    debt_id = int(callback.data.split(":")[1]) # Исправленная строка
-    async with asyncpg.connect(DB_URI) as db:
-        cursor = await db.execute("UPDATE personal_debts SET done = 1 WHERE id = ? AND user_id = ? AND done = 0", (debt_id, callback.from_user.id))
-        await db.commit()
-        updated = cursor.rowcount
+    # Исправлено: добавляем индекс, чтобы взять именно ID долга после двоеточия
+    debt_id = int(callback.data.split(":")[1])
+    
+    conn = await asyncpg.connect(DB_URI)
+    result = await conn.execute("UPDATE personal_debts SET done = 1 WHERE id = $1 AND user_id = $2 AND done = 0", debt_id, callback.from_user.id)
+    await conn.close()
+    
+    updated = int(result.split()[-1]) if result else 0
+    
     if updated:
         if isinstance(callback.message, Message):
             await callback.message.edit_text("✅ Долг закрыт!")
         await callback.answer("Готово!")
     else:
         await callback.answer("Долг не найден.", show_alert=True)
+
 # =========================
 # РАЗДЕЛ: КОНСПЕКТЫ
 # =========================
