@@ -17,7 +17,7 @@ from aiogram.types import (
 )
 
 TOKEN = "8971026156:AAFxaZEOWaZeipjOgOMtujmLm19c7NRZ_nE"
-DB_NAME = "postgresql://postgres:kupevchernomkupeauditt3481555@db.ksuduzilrjxrfblavpqc.supabase.co:5432/postgres"
+DB_URI = "postgresql://postgres:kupevchernomkupeauditt3481555@db.ksuduzilrjxrfblavpqc.supabase.co:5432/postgres"
 
 dp = Dispatcher()
 
@@ -91,7 +91,7 @@ async def init_db():
 # Секретная команда полной очистки базы данных
 @dp.message(Command("очистить_базу"))
 async def clear_database(message: Message):
-    async with asyncpg.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_URI) as db:
         await db.execute("DROP TABLE IF EXISTS homework")
         await db.execute("DROP TABLE IF EXISTS personal_debts")
         await db.execute("DROP TABLE IF EXISTS notes")
@@ -165,7 +165,7 @@ async def homework_deadline(message: Message, state: FSMContext):
         await message.answer("Пожалуйста, укажите срок сдачи текстом или нажмите «❌ Отмена»")
         return
     data = await state.get_data()
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_URI) as db:
         await db.execute(
             "INSERT INTO homework (subject, description, deadline, author_id) VALUES (?, ?, ?, ?)",
             (data["subject"], data["description"], message.text.strip(), message.from_user.id)
@@ -176,7 +176,7 @@ async def homework_deadline(message: Message, state: FSMContext):
 
 @dp.message(F.text == "📚 Домашка")
 async def show_homework(message: Message):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(DB_URI) as db:
         cursor = await db.execute("SELECT id, subject, description, deadline FROM homework ORDER BY id DESC")
         tasks = await cursor.fetchall()
     if not tasks:
@@ -196,7 +196,7 @@ async def save_debt(message: Message, state: FSMContext):
     if not message.text or message.text in MAIN_BUTTONS:
         await message.answer("Пожалуйста, напишите название долга текстом или нажмите «❌ Отмена»")
         return
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_URI) as db:
         await db.execute("INSERT INTO personal_debts (user_id, title) VALUES (?, ?)", (message.from_user.id, message.text.strip()))
         await db.commit()
     await state.clear()
@@ -204,7 +204,7 @@ async def save_debt(message: Message, state: FSMContext):
 
 @dp.message(F.text == "🔒 Мои долги")
 async def show_debts(message: Message):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_URI) as db:
         cursor = await db.execute("SELECT id, title FROM personal_debts WHERE user_id = ? AND done = 0 ORDER BY id DESC", (message.from_user.id,))
         debts = await cursor.fetchall()
     if not debts:
@@ -217,7 +217,7 @@ async def show_debts(message: Message):
 @dp.callback_query(F.data.startswith("done:"))
 async def complete_debt(callback: CallbackQuery):
     debt_id = int(callback.data.split(":")[1]) # Исправленная строка
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_URI) as db:
         cursor = await db.execute("UPDATE personal_debts SET done = 1 WHERE id = ? AND user_id = ? AND done = 0", (debt_id, callback.from_user.id))
         await db.commit()
         updated = cursor.rowcount
@@ -265,7 +265,7 @@ async def save_note(message: Message, state: FSMContext):
         file_id = message.voice.file_id
         file_type = "voice"
 
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_URI) as db:
         await db.execute(
             "INSERT INTO notes (title, content, file_id, file_type, author_id) VALUES (?, ?, ?, ?, ?)",
             (title[:200], content, file_id, file_type, message.from_user.id)
@@ -277,7 +277,7 @@ async def save_note(message: Message, state: FSMContext):
 
 @dp.message(F.text == "📒 Конспекты")
 async def show_notes(message: Message):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_URI) as db:
         cursor = await db.execute("SELECT id, title, content, file_id, file_type FROM notes ORDER BY id DESC LIMIT 20")
         notes = await cursor.fetchall()
     if not notes:
