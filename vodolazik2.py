@@ -184,18 +184,39 @@ async def homework_deadline(message: Message, state: FSMContext):
 @dp.message(F.text == "📚 Домашка")
 async def show_homework(message: Message):
     conn = await asyncpg.connect(DB_URI)
-    tasks = await conn.fetch("SELECT id, subject, description, deadline FROM homework ORDER BY id DESC")
+    tasks = await conn.fetch("SELECT id, subject, description, deadline, author_id FROM homework ORDER BY id DESC")
     await conn.close()
     
     if not tasks:
         await message.answer("Пока заданий нет.")
         return
+        
     for task in tasks:
-        task_id = task['id']
-        subject = task['subject']
-        description = task['description']
-        deadline = task['deadline']
-        await message.answer(f"📚 Задание №{task_id}\n\nПредмет: {subject}\nЗадание: {description}\nСрок: {deadline}")
+        text = f"📚 Задание №{task['id']}\n\nПредмет: {task['subject']}\nЗадание: {task['description']}\nСрок: {task['deadline']}"
+        
+        # Если текущий пользователь является автором этого задания, добавляем ему кнопку удаления
+        if task['author_id'] == message.from_user.id:
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="❌ Удалить задание", callback_data=f"del_hw:{task['id']}:_")]])
+            await message.answer(text, reply_markup=keyboard)
+        else:
+            await message.answer(text)
+
+@dp.callback_query(F.data.startswith("del_hw:"))
+async def delete_homework(callback: CallbackQuery):
+    # Вытаскиваем ID домашнего задания из callback_data
+    parts = callback.data.split(":")
+    task_id = int(parts[1])
+    
+    conn = await asyncpg.connect(DB_URI)
+    # Удаляем задание из таблицы по его уникальному ID
+    await conn.execute("DELETE FROM homework WHERE id = $1", task_id)
+    await conn.close()
+    
+    # Уведомляем пользователя всплывающим окном в Telegram и меняем текст
+    await callback.answer("Задание успешно удалено!", show_alert=False)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text("🗑 Это домашнее задание было удалено автором.")
 
 
 @dp.message(F.text == "➕ Добавить долг")
@@ -310,7 +331,7 @@ async def save_note(message: Message, state: FSMContext):
 @dp.message(F.text == "📒 Конспекты")
 async def show_notes(message: Message):
     conn = await asyncpg.connect(DB_URI)
-    notes = await conn.fetch("SELECT id, title, content, file_id, file_type FROM notes ORDER BY id DESC LIMIT 20")
+    notes = await conn.fetch("SELECT id, title, content, file_id, file_type, author_id FROM notes ORDER BY id DESC LIMIT 20")
     await conn.close()
     
     if not notes:
@@ -318,13 +339,22 @@ async def show_notes(message: Message):
         return
         
     for note in notes:
-        await message.answer(f"📒 Конспект №{note['id']}\n\nОписание/Название: {note['title']}")
+        text_caption = f"📒 Конспект №{note['id']}\n\nОписание/Название: {note['title']}"
         
-        # Если есть текстовое содержимое, отправляем его
+        # Создаем кнопку удаления, если текущий пользователь — автор конспекта
+        keyboard = None
+        if note['author_id'] == message.from_user.id:
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="❌ Удалить конспект", callback_data=f"del_note:{note['id']}")]])
+        
+        # Отправляем главное описание с кнопкой (если она есть)
+        await message.answer(text_caption, reply_markup=keyboard)
+        
+        # Если есть длинный текст лекции, отправляем его отдельно
         if note['content'] and note['content'].strip():
             await message.answer(note['content'][:4000])
             
-        # Если прикреплен файл, отправляем его по file_id
+        # Если прикреплен медиафайл, отправляем его ниже
         if not note['file_id']:
             continue
             
@@ -341,6 +371,22 @@ async def show_notes(message: Message):
             await message.answer_audio(f_id)
         elif f_type == "voice":
             await message.answer_voice(f_id)
+
+@dp.callback_query(F.data.startswith("del_note:"))
+async def delete_note(callback: CallbackQuery):
+    # Вытаскиваем ID конспекта из callback_data
+    note_id = int(callback.data.split(":")[1])
+    
+    conn = await asyncpg.connect(DB_URI)
+    # Удаляем конспект из таблицы по его ID
+    await conn.execute("DELETE FROM notes WHERE id = $1", note_id)
+    await conn.close()
+    
+    # Уведомляем пользователя и меняем заголовок карточки конспекта
+    await callback.answer("Конспект успешно удален!", show_alert=False)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text("🗑 Этот конспект был удален автором. Файлы ниже больше не актуальны.")
+
 
 
 async def handle(request):
