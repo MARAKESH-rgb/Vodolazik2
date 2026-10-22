@@ -1,6 +1,6 @@
 import asyncio
 import os
-import aiosqlite
+import asyncpg
 from aiohttp import web
 
 from aiogram import Bot, Dispatcher, F
@@ -17,7 +17,7 @@ from aiogram.types import (
 )
 
 TOKEN = "8971026156:AAFxaZEOWaZeipjOgOMtujmLm19c7NRZ_nE"
-DB_NAME = "study.db"
+DB_NAME = "postgresql://postgres:kupevchernomkupeauditt3481555@db.ksuduzilrjxrfblavpqc.supabase.co:5432/postgres"
 
 dp = Dispatcher()
 
