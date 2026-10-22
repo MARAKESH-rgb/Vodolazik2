@@ -55,7 +55,7 @@ MAIN_BUTTONS = [
 ]
 
 async def init_db():
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_NAME) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS homework (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +88,7 @@ async def init_db():
 # Секретная команда полной очистки базы данных
 @dp.message(Command("очистить_базу"))
 async def clear_database(message: Message):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with asyncpg.connect(DB_NAME) as db:
         await db.execute("DROP TABLE IF EXISTS homework")
         await db.execute("DROP TABLE IF EXISTS personal_debts")
         await db.execute("DROP TABLE IF EXISTS notes")
