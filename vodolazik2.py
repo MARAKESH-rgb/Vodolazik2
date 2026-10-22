@@ -251,7 +251,6 @@ async def upload_note(message: Message, state: FSMContext):
     await state.set_state(NoteForm.content)
     await message.answer("Отправь следующим сообщением текст, фото или файл конспекта.", reply_markup=cancel_menu)
 
-# Исправленный хэндлер сохранения конспектов (принимает любые типы файлов)
 @dp.message(NoteForm.content)
 async def save_note(message: Message, state: FSMContext):
     if message.text in MAIN_BUTTONS:
@@ -280,52 +279,56 @@ async def save_note(message: Message, state: FSMContext):
         file_id = message.voice.file_id
         file_type = "voice"
 
-    async with asyncpg.connect(DB_URI) as db:
-        await db.execute(
-            "INSERT INTO notes (title, content, file_id, file_type, author_id) VALUES (?, ?, ?, ?, ?)",
-            (title[:200], content, file_id, file_type, message.from_user.id)
-        )
-        await db.commit()
+    conn = await asyncpg.connect(DB_URI)
+    await conn.execute(
+        "INSERT INTO notes (title, content, file_id, file_type, author_id) VALUES ($1, $2, $3, $4, $5)",
+        title[:200], content, file_id, file_type, message.from_user.id
+    )
+    await conn.close()
 
     await state.clear()
     await message.answer("📒 Конспект успешно сохранён для всей группы!", reply_markup=menu)
 
 @dp.message(F.text == "📒 Конспекты")
 async def show_notes(message: Message):
-    async with asyncpg.connect(DB_URI) as db:
-        cursor = await db.execute("SELECT id, title, content, file_id, file_type FROM notes ORDER BY id DESC LIMIT 20")
-        notes = await cursor.fetchall()
+    conn = await asyncpg.connect(DB_URI)
+    notes = await conn.fetch("SELECT id, title, content, file_id, file_type FROM notes ORDER BY id DESC LIMIT 20")
+    await conn.close()
+    
     if not notes:
         await message.answer("Пока конспектов нет.")
         return
-    for note_id, title, content, file_id, file_type in notes:
-        await message.answer(f"📒 Конспект №{note_id}\n\nОписание/Название: {title}")
-        if content:
-            await message.answer(content[:4000])
-        if not file_id:
+    for note in notes:
+        await message.answer(f"📒 Конспект №{note['id']}\n\nОписание/Название: {note['title']}")
+        if note['content']:
+            await message.answer(note['content'][:4000])
+        if not note['file_id']:
             continue
-        if file_type == "photo":
-            await message.answer_photo(file_id)
-        elif file_type == "document":
-            await message.answer_document(file_id)
-        elif file_type == "video":
-            await message.answer_video(file_id)
-        elif file_type == "audio":
-            await message.answer_audio(file_id)
-        elif file_type == "voice":
-            await message.answer_voice(file_id)
+        
+        f_id = note['file_id']
+        f_type = note['file_type']
+        if f_type == "photo":
+            await message.answer_photo(f_id)
+        elif f_type == "document":
+            await message.answer_document(f_id)
+        elif f_type == "video":
+            await message.answer_video(f_id)
+        elif f_type == "audio":
+            await message.answer_audio(f_id)
+        elif f_type == "voice":
+            await message.answer_voice(f_id)
 
-
-# Заглушка веб-сервера для Render
 async def handle(request):
-    return web.Response(text="Bot is running")
+    return web.Response(text="Bot is running smoothly on Render!")
 
 async def main():
     await init_db()
+    
     app = web.Application()
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
+    
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
@@ -335,3 +338,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
