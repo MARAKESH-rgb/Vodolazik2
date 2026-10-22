@@ -55,35 +55,38 @@ MAIN_BUTTONS = [
 ]
 
 async def init_db():
-    async with asyncpg.connect(DB_NAME) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS homework (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject TEXT NOT NULL,
-                description TEXT NOT NULL,
-                deadline TEXT NOT NULL,
-                author_id INTEGER NOT NULL
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS personal_debts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                done INTEGER NOT NULL DEFAULT 0
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                content TEXT,
-                file_id TEXT,
-                file_type TEXT,
-                author_id INTEGER NOT NULL
-            )
-        """)
-        await db.commit()
+    # Открываем соединение правильно через await, используя ссылку DB_URI
+    conn = await asyncpg.connect(DB_URI)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS homework (
+            id SERIAL PRIMARY KEY,
+            subject TEXT NOT NULL,
+            description TEXT NOT NULL,
+            deadline TEXT NOT NULL,
+            author_id BIGINT NOT NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS personal_debts (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            title TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT,
+            file_id TEXT,
+            file_type TEXT,
+            author_id BIGINT NOT NULL
+        )
+    """)
+    # Обязательно закрываем соединение в конце
+    await conn.close()
+
 
 # Секретная команда полной очистки базы данных
 @dp.message(Command("очистить_базу"))
