@@ -17,7 +17,8 @@ from aiogram.types import (
 )
 
 TOKEN = "8971026156:AAFxaZEOWaZeipjOgOMtujmLm19c7NRZ_nE"
-DB_URI = "postgresql://postgres:kupevchernomkupeauditt3481555@db.ksuduzilrjxrfblavpqc.supabase.co:5432/postgres"
+DB_URI = "postgresql://postgres:kupevchernomkupeauditt3481555@db.ksuduzilrjxrfblavpqc.supabase.co:6543/postgres?sslmode=require"
+
 
 dp = Dispatcher()
 
