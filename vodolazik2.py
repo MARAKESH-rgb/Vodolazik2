@@ -135,6 +135,10 @@ async def start(message: Message, state: FSMContext):
         parse_mode="Markdown"  # Этот параметр нужен, чтобы текст с жирным шрифтом отображался красиво
     )
 
+# =====================================================================
+# ИСПРАВЛЕННЫЙ РАЗДЕЛ: ДОМАШКА
+# =====================================================================
+
 @dp.message(F.text == "➕ Добавить домашку")
 async def add_homework(message: Message, state: FSMContext):
     await state.clear()
@@ -165,12 +169,15 @@ async def homework_deadline(message: Message, state: FSMContext):
         await message.answer("Пожалуйста, укажите срок сдачи текстом или нажмите «❌ Отмена»")
         return
     data = await state.get_data()
-    async with asyncpg.connect(DB_URI) as db:
-        await db.execute(
-            "INSERT INTO homework (subject, description, deadline, author_id) VALUES (?, ?, ?, ?)",
-            (data["subject"], data["description"], message.text.strip(), message.from_user.id)
-        )
-        await db.commit()
+    
+    # Исправлено: заменены знаки '?' на '$1, $2, $3, $4' для asyncpg
+    conn = await asyncpg.connect(DB_URI)
+    await conn.execute(
+        "INSERT INTO homework (subject, description, deadline, author_id) VALUES ($1, $2, $3, $4)",
+        data["subject"], data["description"], message.text.strip(), message.from_user.id
+    )
+    await conn.close()
+    
     await state.clear()
     await message.answer("✅ Домашнее задание добавлено!", reply_markup=menu)
 
@@ -184,7 +191,6 @@ async def show_homework(message: Message):
         await message.answer("Пока заданий нет.")
         return
     for task in tasks:
-        # Явно вытаскиваем значения из объекта Record по именам колонок
         task_id = task['id']
         subject = task['subject']
         description = task['description']
