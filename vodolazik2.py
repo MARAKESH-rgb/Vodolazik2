@@ -219,6 +219,10 @@ async def delete_homework(callback: CallbackQuery):
         await callback.message.edit_text("🗑 Это домашнее задание было удалено автором.")
 
 
+# =====================================================================
+# ИСПРАВЛЕННЫЙ РАЗДЕЛ: ЛИЧНЫЕ ДОЛГИ
+# =====================================================================
+
 @dp.message(F.text == "➕ Добавить долг")
 async def add_debt(message: Message, state: FSMContext):
     await state.clear()
@@ -230,9 +234,12 @@ async def save_debt(message: Message, state: FSMContext):
     if not message.text or message.text in MAIN_BUTTONS:
         await message.answer("Пожалуйста, напишите название долга текстом или нажмите «❌ Отмена»")
         return
-    async with asyncpg.connect(DB_URI) as db:
-        await db.execute("INSERT INTO personal_debts (user_id, title) VALUES (?, ?)", (message.from_user.id, message.text.strip()))
-        await db.commit()
+    
+    # Исправлено: заменены знаки '?' на '$1, $2' для asyncpg
+    conn = await asyncpg.connect(DB_URI)
+    await conn.execute("INSERT INTO personal_debts (user_id, title) VALUES ($1, $2)", message.from_user.id, str(message.text).strip())
+    await conn.close()
+    
     await state.clear()
     await message.answer("🔒 Долг добавлен в список.", reply_markup=menu)
 
@@ -253,7 +260,7 @@ async def show_debts(message: Message):
 
 @dp.callback_query(F.data.startswith("done:"))
 async def complete_debt(callback: CallbackQuery):
-    # Исправлено: добавляем индекс, чтобы взять именно ID долга после двоеточия
+    # Исправлено: добавлен индекс [1] для правильного получения ID долга
     debt_id = int(callback.data.split(":")[1])
     
     conn = await asyncpg.connect(DB_URI)
@@ -268,6 +275,7 @@ async def complete_debt(callback: CallbackQuery):
         await callback.answer("Готово!")
     else:
         await callback.answer("Долг не найден.", show_alert=True)
+
 
 # =====================================================================
 # ИСПРАВЛЕННЫЙ РАЗДЕЛ: КОНСПЕКТЫ
